@@ -77,6 +77,7 @@ module.exports.makeMiddleware = function(options) {
   if (!proxyUrl.endsWith('/')) {
     proxyUrl += '/';
   }
+  let appHost = options.appHost;
   const userAgentPattern =
       options.userAgentPattern || new RegExp(botUserAgents.join('|'), 'i');
   const excludeUrlPattern = options.excludeUrlPattern ||
@@ -85,25 +86,40 @@ module.exports.makeMiddleware = function(options) {
   // The Rendertron service itself has a hard limit of 10 seconds to render, so
   // let's give a little more time than that by default.
   const timeout = options.timeout || 11000; // Milliseconds.
-
+  var getHost = function (req) {
+    return (!appHost) 
+      ? req.get('host')
+      : appHost;
+  };
+  var goToApp = function (url) {
+    if (!appHost) {
+      next();
+    } else {
+      request({url: url}, (e) => {
+        if (e) {
+          console.error(`[app] ${e.code} error fetching ${url}`);
+        }
+      }).pipe(res);
+    }
+  };
   return function rendertronMiddleware(req, res, next) {
+    const incomingUrl =
+        req.protocol + '://' + getHost(req) + req.originalUrl;
     if (!userAgentPattern.test(req.headers['user-agent']) ||
         excludeUrlPattern.test(req.path)) {
-      next();
-      return;
+      goToApp(incomingUrl);
     }
-    const incomingUrl =
-        req.protocol + '://' + req.get('host') + req.originalUrl;
-    let renderUrl = proxyUrl + encodeURIComponent(incomingUrl);
-    if (injectShadyDom) {
-      renderUrl += '?wc-inject-shadydom=true';
-    }
-    request({url: renderUrl, timeout}, (e) => {
-      if (e) {
-        console.error(
-            `[rendertron middleware] ${e.code} error fetching ${renderUrl}`);
-        next();
+    else {
+      let renderUrl = proxyUrl + encodeURIComponent(incomingUrl);
+      if (injectShadyDom) {
+        renderUrl += '?wc-inject-shadydom=true';
       }
-    }).pipe(res);
+      request({url: renderUrl, timeout}, (e) => {
+        if (e) {
+          console.error(`[rendertron middleware] ${e.code} error fetching ${renderUrl}`);
+          goToApp(incomingUrl);
+        }
+      }).pipe(res);
+    }
   };
 };
