@@ -91,9 +91,10 @@ module.exports.makeMiddleware = function(options) {
       ? req.get('host')
       : appHost;
   };
-  var goToApp = function (url) {
+  var goToApp = function (url, res) {
     if (!appHost) {
       next();
+      return;
     } else {
       request({url: url}, (e) => {
         if (e) {
@@ -107,7 +108,7 @@ module.exports.makeMiddleware = function(options) {
         req.protocol + '://' + getHost(req) + req.originalUrl;
     if (!userAgentPattern.test(req.headers['user-agent']) ||
         excludeUrlPattern.test(req.path)) {
-      goToApp(incomingUrl);
+      goToApp(incomingUrl, res);
     }
     else {
       let renderUrl = proxyUrl + encodeURIComponent(incomingUrl);
@@ -117,7 +118,7 @@ module.exports.makeMiddleware = function(options) {
       request({url: renderUrl, timeout}, (e) => {
         if (e) {
           console.error(`[rendertron middleware] ${e.code} error fetching ${renderUrl}`);
-          goToApp(incomingUrl);
+          goToApp(incomingUrl, res);
         }
       }).pipe(res);
     }
